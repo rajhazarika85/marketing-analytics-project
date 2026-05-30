@@ -1,0 +1,134 @@
+# Name shown in GitHub Actions UI
+# You can call this anything
+# Example: terraform, deploy-infra, gcp-deployment
+name: terraform
+
+# Event that triggers this workflow
+on:
+
+  # Whenever code is pushed
+  push:
+
+    # Only if the push is to the main branch
+    branches:
+      - main
+
+# A workflow can have multiple jobs
+# Example:
+# jobs:
+#   terraform:
+#   deploy-airflow:
+#   deploy-spark:
+#
+# Here we only have one job
+jobs:
+
+  # Job name
+  # Does NOT need to match workflow name
+  #
+  # This is simply an identifier
+  terraform:
+
+    # GitHub creates a temporary VM for this job
+    #
+    # ubuntu-latest means:
+    # "Give me the newest supported Ubuntu machine"
+    #
+    # Currently usually Ubuntu 24 or 22
+    #
+    # GitHub provisions:
+    # CPU
+    # RAM
+    # Network
+    # Temporary disk
+    #
+    # Job runs on that machine
+    runs-on: ubuntu-latest
+
+    # Default location for all commands
+    #
+    # Instead of:
+    #
+    # run: cd terraform/environments/dev
+    # run: terraform init
+    #
+    # every step automatically executes here
+    defaults:
+      run:
+        working-directory: terraform/environments/dev
+
+    steps:
+
+      # Step 1
+      #
+      # Downloads your GitHub repository
+      # into the temporary VM
+      #
+      # Without this step:
+      # there is no terraform code available
+      - uses: actions/checkout@v4
+
+      # Step 2
+      #
+      # Authenticate to GCP
+      #
+      # Uses Workload Identity Federation
+      #
+      # No service account key file needed
+      #
+      # Creates a temporary token
+      # that Terraform can use
+      - uses: google-github-actions/auth@v2
+        with:
+
+          # Workload Identity Pool
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+
+          # Service Account to impersonate
+          service_account: ${{ secrets.GCP_SA }}
+
+      # Step 3
+      #
+      # Install Terraform binary
+      #
+      # Similar to:
+      #
+      # brew install terraform
+      #
+      # but inside the temporary VM
+      - uses: hashicorp/setup-terraform@v3
+
+      # Step 4
+      #
+      # Download providers
+      #
+      # Example:
+      # Google Provider
+      #
+      # Configure backend
+      #
+      # Read terraform state
+      #
+      # Must run before plan/apply
+      - run: terraform init
+
+      # Step 5
+      #
+      # Calculate changes
+      #
+      # Example:
+      # + create bucket
+      # + create dataproc cluster
+      #
+      # No changes made yet
+      - run: terraform plan
+
+      # Step 6
+      #
+      # Execute the plan
+      #
+      # Infrastructure actually gets created
+      #
+      # auto-approve skips
+      # manual confirmation
+      - run: terraform apply -auto-approve

@@ -17,3 +17,10 @@ resource "google_storage_bucket" "gold" {
   location = var.region
   force_destroy = true
 }
+
+resource "google_storage_bucket" "test" {
+
+  name = "${var.project_id}-test"
+  location = var.region
+  force_destroy = true
+}

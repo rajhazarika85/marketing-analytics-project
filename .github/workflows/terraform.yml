@@ -13,6 +13,22 @@ on:
     branches:
       - main
 
+# ==========================================================
+# Required for Workload Identity Federation
+#
+# id-token: write
+#   Allows GitHub to generate an OIDC token.
+#
+# contents: read
+#   Allows workflow to read repository contents.
+#
+# Without id-token: write:
+#   google-github-actions/auth will fail.
+# ==========================================================
+permissions:
+  id-token: write
+  contents: read
+
 # A workflow can have multiple jobs
 # Example:
 # jobs:
@@ -66,26 +82,50 @@ jobs:
       #
       # Without this step:
       # there is no terraform code available
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
+     # ----------------------------------------------------
       # Step 2
       #
-      # Authenticate to GCP
+      # Authenticate GitHub to GCP.
       #
-      # Uses Workload Identity Federation
+      # Uses Workload Identity Federation.
       #
-      # No service account key file needed
+      # No JSON key file required.
       #
-      # Creates a temporary token
-      # that Terraform can use
-      - uses: google-github-actions/auth@v2
+      # Flow:
+      #
+      # GitHub
+      #    ↓
+      # OIDC Token
+      #    ↓
+      # Workload Identity Pool
+      #    ↓
+      # Service Account
+      #    ↓
+      # Temporary GCP Credentials
+      # ----------------------------------------------------
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
         with:
 
-          # Workload Identity Pool
+          # Full Workload Identity Provider path.
+          #
+          # Example:
+          # projects/123456789/locations/global/
+          # workloadIdentityPools/github-pool/
+          # providers/github-provider
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
 
-          # Service Account to impersonate
-          service_account: ${{ secrets.GCP_SA }}
+          # Service account to impersonate.
+          #
+          # Example:
+          # github-actions@
+          # marketing-analytics-pam.iam.gserviceaccount.com
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      # ----------------------------------------------------
 
       # Step 3
       #
@@ -96,8 +136,10 @@ jobs:
       # brew install terraform
       #
       # but inside the temporary VM
-      - uses: hashicorp/setup-terraform@v3
-
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.11.4
       # Step 4
       #
       # Download providers
@@ -110,8 +152,14 @@ jobs:
       # Read terraform state
       #
       # Must run before plan/apply
-      - run: terraform init
+      - name: Terraform Init
+        run: terraform init
 
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Validate
+        run: terraform validate
       # Step 5
       #
       # Calculate changes
@@ -121,7 +169,8 @@ jobs:
       # + create dataproc cluster
       #
       # No changes made yet
-      - run: terraform plan
+      - name: Terraform Plan
+        run: terraform plan
 
       # Step 6
       #
@@ -131,4 +180,5 @@ jobs:
       #
       # auto-approve skips
       # manual confirmation
-      - run: terraform apply -auto-approve
+      - name: Terraform Apply
+        run: terraform apply -auto-approve
